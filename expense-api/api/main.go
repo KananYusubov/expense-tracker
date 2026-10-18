@@ -48,8 +48,9 @@ func main() {
 	// Expense endpoints
 	r.Post("/expenses", expenseHandler.Create)
 	r.Get("/expenses", expenseHandler.GetAllExpenses)
-	r.Get("/expenses/{id}", expenseHandler.GetExpense)
-	r.Delete("/expenses/{id}", expenseHandler.DeleteExpense)
+	r.Get("/expenses/summary", expenseHandler.GetAllExpensesSummary)
+	r.Get("/expenses/{id:[0-9]+}", expenseHandler.GetExpense)
+	r.Delete("/expenses/{id:[0-9]+}", expenseHandler.DeleteExpense)
 
 	log.Printf("Server running at %s port ...  ", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {

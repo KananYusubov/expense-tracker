@@ -294,3 +294,61 @@ func TestExpenseHandler_DeleteExpense(t *testing.T) {
 		t.Fatalf("expected 404 when deleting non-existent expense, got %d", delW404.Code)
 	}
 }
+
+func TestExpenseHandler_SummaryRouting(t *testing.T) {
+	store, teardown := setupTestStorage(t)
+	defer teardown()
+
+	h := handler.NewExpenseHandler(store)
+	r := chi.NewRouter()
+	r.Get("/expenses/summary", h.GetAllExpensesSummary)
+	r.Get("/expenses/{id:[0-9]+}", h.GetExpense)
+
+	// Seed expenses in different categories
+	_, _ = store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   20.00,
+		Category: "food",
+		SpentOn:  "2026-05-01",
+	})
+	_, _ = store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   30.00,
+		Category: "food",
+		SpentOn:  "2026-05-02",
+	})
+	_, _ = store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   15.00,
+		Category: "transport",
+		SpentOn:  "2026-05-03",
+	})
+
+	// 1. Verify /expenses/summary routes to GetAllExpensesSummary (not GetExpense)
+	req := httptest.NewRequest(http.MethodGet, "/expenses/summary", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for summary route, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var summary []model.CategorySummary
+	if err := json.NewDecoder(w.Body).Decode(&summary); err != nil {
+		t.Fatalf("failed to decode summary response: %v", err)
+	}
+
+	if len(summary) != 2 {
+		t.Fatalf("expected 2 category summaries, got %d", len(summary))
+	}
+	// "food" has total 50.00, should be first
+	if summary[0].Category != "food" || summary[0].Total != 50.00 {
+		t.Errorf("expected food total 50.00, got %s: %f", summary[0].Category, summary[0].Total)
+	}
+
+	// 2. Verify /expenses/1 still routes to GetExpense
+	reqID := httptest.NewRequest(http.MethodGet, "/expenses/1", nil)
+	wID := httptest.NewRecorder()
+	r.ServeHTTP(wID, reqID)
+
+	if wID.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for /expenses/1, got %d: %s", wID.Code, wID.Body.String())
+	}
+}

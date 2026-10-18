@@ -192,3 +192,37 @@ func (s *Storage) DeleteExpense(ctx context.Context, id int64) error {
 
 	return nil
 }
+
+// GetAllExpensesSummary returns total spent grouped by category.
+func (s *Storage) GetAllExpensesSummary(ctx context.Context) ([]model.CategorySummary, error) {
+	query := `
+	SELECT category, SUM(amount) as total_amount
+	FROM expenses
+	WHERE deleted_at IS NULL
+	GROUP BY category
+	ORDER BY total_amount DESC
+	`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query expenses summary: %w", err)
+	}
+	defer rows.Close()
+
+	summary := make([]model.CategorySummary, 0)
+	for rows.Next() {
+		var cs model.CategorySummary
+		if err := rows.Scan(
+			&cs.Category,
+			&cs.Total,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan expense summary row: %w", err)
+		}
+		summary = append(summary, cs)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating expense summary rows: %w", err)
+	}
+
+	return summary, nil
+}

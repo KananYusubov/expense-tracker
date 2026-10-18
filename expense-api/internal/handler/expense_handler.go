@@ -84,6 +84,17 @@ func (h *ExpenseHandler) GetAllExpenses(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, expenses)
 }
 
+// GetAllExpensesSummary returns summary of expenses by category.
+func (h *ExpenseHandler) GetAllExpensesSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := h.store.GetAllExpensesSummary(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get expense summary: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, summary)
+}
+
 // GetExpense fetches a single expense by ID.
 func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(w, r)
