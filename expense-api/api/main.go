@@ -49,6 +49,7 @@ func main() {
 	r.Post("/expenses", expenseHandler.Create)
 	r.Get("/expenses", expenseHandler.GetAllExpenses)
 	r.Get("/expenses/{id}", expenseHandler.GetExpense)
+	r.Delete("/expenses/{id}", expenseHandler.DeleteExpense)
 
 	log.Printf("Server running at %s port ...  ", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {

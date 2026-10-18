@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -85,10 +86,8 @@ func (h *ExpenseHandler) GetAllExpenses(w http.ResponseWriter, r *http.Request) 
 
 // GetExpense fetches a single expense by ID.
 func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		respondError(w, http.StatusBadRequest, "invalid expense id")
+	id, err := parseID(w, r)
+	if err != nil {
 		return
 	}
 
@@ -105,11 +104,38 @@ func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, expense)
 }
 
+func (h *ExpenseHandler) DeleteExpense(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(w, r)
+	if err != nil {
+		return
+	}
+
+	errRes := h.store.DeleteExpense(r.Context(), id)
+	if errRes != nil {
+		if errors.Is(errRes, storage.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "expense not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to delete expense: "+errRes.Error())
+		return
+	}
+
+	respondMessage(w, http.StatusOK, "expense deleted successfully")
+}
+
 // return response data as JSON format
 func respondJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(data)
+	if data != nil {
+		_ = json.NewEncoder(w).Encode(data)
+	}
+}
+
+func respondMessage(w http.ResponseWriter, statusCode int, message string) {
+	respondJSON(w, statusCode, map[string]string{
+		"message": message,
+	})
 }
 
 // return error as JSON format
@@ -117,4 +143,15 @@ func respondError(w http.ResponseWriter, statusCode int, message string) {
 	respondJSON(w, statusCode, map[string]string{
 		"error": message,
 	})
+}
+
+func parseID(w http.ResponseWriter, r *http.Request) (int64, error) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		respondError(w, http.StatusBadRequest, "invalid expense id")
+		return 0, fmt.Errorf("invalid expense id %s", idStr)
+	}
+
+	return id, nil
 }

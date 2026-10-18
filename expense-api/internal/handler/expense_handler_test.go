@@ -237,3 +237,60 @@ func TestExpenseHandler_GetExpense(t *testing.T) {
 		t.Errorf("expected 400 Bad Request for invalid id, got %d", w400.Code)
 	}
 }
+
+func TestExpenseHandler_DeleteExpense(t *testing.T) {
+	store, teardown := setupTestStorage(t)
+	defer teardown()
+
+	h := handler.NewExpenseHandler(store)
+	r := chi.NewRouter()
+	r.Get("/expenses/{id}", h.GetExpense)
+	r.Delete("/expenses/{id}", h.DeleteExpense)
+
+	// 1. Create a sample expense
+	_, err := store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   30.00,
+		Category: "books",
+		Note:     "Golang book",
+		SpentOn:  "2026-05-12",
+	})
+	if err != nil {
+		t.Fatalf("failed to create test expense: %v", err)
+	}
+
+	// 2. Delete existing expense -> 200 OK
+	delReq := httptest.NewRequest(http.MethodDelete, "/expenses/1", nil)
+	delW := httptest.NewRecorder()
+	r.ServeHTTP(delW, delReq)
+
+	if delW.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on delete, got %d: %s", delW.Code, delW.Body.String())
+	}
+
+	// 3. Verify it is no longer retrievable (Soft delete check -> 404)
+	getReq := httptest.NewRequest(http.MethodGet, "/expenses/1", nil)
+	getW := httptest.NewRecorder()
+	r.ServeHTTP(getW, getReq)
+
+	if getW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after deletion, got %d", getW.Code)
+	}
+
+	// 4. Try deleting the already deleted expense -> 404 Not Found
+	delReq2 := httptest.NewRequest(http.MethodDelete, "/expenses/1", nil)
+	delW2 := httptest.NewRecorder()
+	r.ServeHTTP(delW2, delReq2)
+
+	if delW2.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when deleting already deleted expense, got %d", delW2.Code)
+	}
+
+	// 5. Try deleting non-existent ID -> 404 Not Found
+	delReq404 := httptest.NewRequest(http.MethodDelete, "/expenses/9999", nil)
+	delW404 := httptest.NewRecorder()
+	r.ServeHTTP(delW404, delReq404)
+
+	if delW404.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when deleting non-existent expense, got %d", delW404.Code)
+	}
+}

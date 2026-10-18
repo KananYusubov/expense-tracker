@@ -167,3 +167,28 @@ func (s *Storage) GetExpense(ctx context.Context, id int64) (*model.Expense, err
 
 	return &exp, nil
 }
+
+// DeleteExpense soft-deletes an active expense by setting deleted_at.
+func (s *Storage) DeleteExpense(ctx context.Context, id int64) error {
+	now := time.Now().UTC()
+
+	query := `
+		UPDATE expenses
+		SET deleted_at = ?, updated_at = ?
+		WHERE id = ? AND deleted_at IS NULL
+	`
+	res, err := s.db.ExecContext(ctx, query, now, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete expense: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check affected rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}

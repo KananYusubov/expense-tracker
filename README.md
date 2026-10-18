@@ -17,10 +17,12 @@ API binds to `http://localhost:8080` and stores SQLite data in `./data`.
 ### Option 2: Direct Terminal Execution
 
 ```
-cd api
-go run ./api/
+cd expense-api
+go run ./api
+```
 
 For testing:
+```
 go test -v ./...
 ```
 
