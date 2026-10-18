@@ -50,6 +50,7 @@ func main() {
 	r.Get("/expenses", expenseHandler.GetAllExpenses)
 	r.Get("/expenses/summary", expenseHandler.GetAllExpensesSummary)
 	r.Get("/expenses/{id:[0-9]+}", expenseHandler.GetExpense)
+	r.Patch("/expenses/{id:[0-9]+}", expenseHandler.Update)
 	r.Delete("/expenses/{id:[0-9]+}", expenseHandler.DeleteExpense)
 
 	log.Printf("Server running at %s port ...  ", port)

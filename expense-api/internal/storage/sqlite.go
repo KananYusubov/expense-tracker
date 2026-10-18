@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -194,6 +195,7 @@ func (s *Storage) DeleteExpense(ctx context.Context, id int64) error {
 }
 
 // GetAllExpensesSummary returns total spent grouped by category.
+// TODO: add metadata for total category count expense count and total spent amount
 func (s *Storage) GetAllExpensesSummary(ctx context.Context) ([]model.CategorySummary, error) {
 	query := `
 	SELECT category, SUM(amount) as total_amount
@@ -225,4 +227,60 @@ func (s *Storage) GetAllExpensesSummary(ctx context.Context) ([]model.CategorySu
 	}
 
 	return summary, nil
+}
+
+func (s *Storage) UpdateExpense(ctx context.Context, req model.UpdateExpenseRequest, id int64) (*model.Expense, error) {
+	now := time.Now().UTC()
+	setClauses := []string{}
+	args := []any{}
+
+	if req.Amount != nil {
+		setClauses = append(setClauses, "amount = ?")
+		args = append(args, *req.Amount)
+	}
+	if req.Category != nil {
+		setClauses = append(setClauses, "category = ?")
+		args = append(args, *req.Category)
+	}
+	if req.Note != nil {
+		setClauses = append(setClauses, "note = ?")
+		args = append(args, *req.Note)
+	}
+	if req.SpentOn != nil {
+		setClauses = append(setClauses, "spent_on = ?")
+		args = append(args, *req.SpentOn)
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no values given for update expense")
+	}
+
+	setClauses = append(setClauses, "updated_at = ?")
+	args = append(args, now, id)
+
+	query := fmt.Sprintf(
+		"UPDATE expenses SET %s WHERE id = ? AND deleted_at IS NULL",
+		strings.Join(setClauses, ", "),
+	)
+
+	res, error := s.db.ExecContext(ctx, query, args...)
+	if error != nil {
+		return nil, fmt.Errorf("failed update expense %w", error)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check affected rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+
+	updatedRow, err := s.GetExpense(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated expense: %w", err)
+	}
+
+	return updatedRow, nil
+
 }

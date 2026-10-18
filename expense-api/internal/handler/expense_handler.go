@@ -73,6 +73,73 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, expense)
 }
 
+// Update modifies an existing expense record.
+func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, errId := parseID(r)
+	if errId != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense id")
+		return
+	}
+
+	var req model.UpdateExpenseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	// At least one field must be provided for update
+	if req.Amount == nil && req.Category == nil && req.Note == nil && req.SpentOn == nil {
+		respondError(w, http.StatusBadRequest, "at least one field must be provided for update")
+		return
+	}
+
+	// Task Validation Rule: The amount must be a positive number.
+	// Negative or zero amounts must return a 400 with a clear error message.
+	if req.Amount != nil {
+		if *req.Amount <= 0 {
+			respondError(w, http.StatusBadRequest, "amount must be a positive number greater than 0")
+			return
+		}
+		// Prevent more than 2 decimal places after point
+		if scaled := *req.Amount * 100; math.Abs(scaled-math.Round(scaled)) > 1e-9 {
+			respondError(w, http.StatusBadRequest, "amount cannot have more than 2 decimal places")
+			return
+		}
+	}
+
+	if req.Category != nil {
+		*req.Category = strings.TrimSpace(*req.Category)
+		if *req.Category == "" {
+			respondError(w, http.StatusBadRequest, "category cannot be empty")
+			return
+		}
+	}
+
+	if req.SpentOn != nil {
+		*req.SpentOn = strings.TrimSpace(*req.SpentOn)
+		if _, err := time.Parse(model.DateFormat, *req.SpentOn); err != nil {
+			respondError(w, http.StatusBadRequest, "spent_on must be a valid date in YYYY-MM-DD format (e.g. 2026-05-08)")
+			return
+		}
+	}
+
+	if req.Note != nil {
+		*req.Note = strings.TrimSpace(*req.Note)
+	}
+
+	expense, err := h.store.UpdateExpense(r.Context(), req, id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "expense not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to update expense: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, expense)
+}
+
 // GetAllExpenses fetches all expenses and returns them sorted newest first.
 func (h *ExpenseHandler) GetAllExpenses(w http.ResponseWriter, r *http.Request) {
 	expenses, err := h.store.GetAllExpenses(r.Context())

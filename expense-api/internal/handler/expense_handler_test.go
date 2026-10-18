@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -350,5 +351,78 @@ func TestExpenseHandler_SummaryRouting(t *testing.T) {
 
 	if wID.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK for /expenses/1, got %d: %s", wID.Code, wID.Body.String())
+	}
+}
+
+func TestExpenseHandler_Update(t *testing.T) {
+	store, teardown := setupTestStorage(t)
+	defer teardown()
+
+	h := handler.NewExpenseHandler(store)
+	r := chi.NewRouter()
+	r.Patch("/expenses/{id:[0-9]+}", h.Update)
+
+	// Seed an initial expense
+	created, err := store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   25.00,
+		Category: "food",
+		Note:     "Lunch",
+		SpentOn:  "2026-05-01",
+	})
+	if err != nil {
+		t.Fatalf("failed to seed expense: %v", err)
+	}
+
+	// 1. Partial update (amount and category only)
+	updatePayload := `{"amount": 35.50, "category": "groceries"}`
+	req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/expenses/%d", created.ID), bytes.NewReader([]byte(updatePayload)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on update, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated model.Expense
+	if err := json.NewDecoder(w.Body).Decode(&updated); err != nil {
+		t.Fatalf("failed to decode updated response: %v", err)
+	}
+	if updated.Amount != 35.50 {
+		t.Errorf("expected amount 35.50, got %f", updated.Amount)
+	}
+	if updated.Category != "groceries" {
+		t.Errorf("expected category 'groceries', got '%s'", updated.Category)
+	}
+	// Note should remain unchanged
+	if updated.Note != "Lunch" {
+		t.Errorf("expected unchanged note 'Lunch', got '%s'", updated.Note)
+	}
+	if updated.UpdatedAt == nil {
+		t.Error("expected updated_at to be populated")
+	}
+
+	// 2. Empty payload -> 400 Bad Request
+	emptyReq := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/expenses/%d", created.ID), bytes.NewReader([]byte(`{}`)))
+	emptyW := httptest.NewRecorder()
+	r.ServeHTTP(emptyW, emptyReq)
+	if emptyW.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for empty update body, got %d", emptyW.Code)
+	}
+
+	// 3. Invalid amount -> 400 Bad Request
+	invalidReq := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/expenses/%d", created.ID), bytes.NewReader([]byte(`{"amount": -10}`)))
+	invalidW := httptest.NewRecorder()
+	r.ServeHTTP(invalidW, invalidReq)
+	if invalidW.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for negative amount, got %d", invalidW.Code)
+	}
+
+	// 4. Non-existing expense -> 404 Not Found
+	req404 := httptest.NewRequest(http.MethodPatch, "/expenses/9999", bytes.NewReader([]byte(`{"amount": 10}`)))
+	w404 := httptest.NewRecorder()
+	r.ServeHTTP(w404, req404)
+	if w404.Code != http.StatusNotFound {
+		t.Errorf("expected 404 Not Found for non-existent expense update, got %d", w404.Code)
 	}
 }
