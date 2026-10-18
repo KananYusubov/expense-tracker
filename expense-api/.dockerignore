@@ -1,0 +1,9 @@
+.git
+.gitignore
+*.db
+bin/
+tmp/
+.vscode/
+README.md
+Dockerfile
+Makefile

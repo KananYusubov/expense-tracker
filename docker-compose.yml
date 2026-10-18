@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: ./expense-api
+      dockerfile: Dockerfile
+    container_name: expense_api
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_PATH=/app/data/expenses.db
+    volumes:
+      # Baza faylı lokal olaraq base qovluqdakı data/ içinə yazılacaq
+      - ./data:/app/data
+    restart: unless-stopped
