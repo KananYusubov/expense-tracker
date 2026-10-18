@@ -97,8 +97,9 @@ func (h *ExpenseHandler) GetAllExpensesSummary(w http.ResponseWriter, r *http.Re
 
 // GetExpense fetches a single expense by ID.
 func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(w, r)
+	id, err := parseID(r)
 	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense id")
 		return
 	}
 
@@ -116,8 +117,9 @@ func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ExpenseHandler) DeleteExpense(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(w, r)
+	id, err := parseID(r)
 	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid expense id")
 		return
 	}
 
@@ -156,12 +158,11 @@ func respondError(w http.ResponseWriter, statusCode int, message string) {
 	})
 }
 
-func parseID(w http.ResponseWriter, r *http.Request) (int64, error) {
+func parseID(r *http.Request) (int64, error) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || id <= 0 {
-		respondError(w, http.StatusBadRequest, "invalid expense id")
-		return 0, fmt.Errorf("invalid expense id %s", idStr)
+		return 0, fmt.Errorf("invalid expense id: %s", idStr)
 	}
 
 	return id, nil
