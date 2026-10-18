@@ -13,16 +13,22 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"expense-api/internal/model"
+	"expense-api/internal/sanitize"
 	"expense-api/internal/storage"
 )
 
 type ExpenseHandler struct {
-	store *storage.Storage
+	store     *storage.Storage
+	maxAmount float64
 }
 
 // Constructor
-func NewExpenseHandler(store *storage.Storage) *ExpenseHandler {
-	return &ExpenseHandler{store: store}
+func NewExpenseHandler(store *storage.Storage, maxAmount ...float64) *ExpenseHandler {
+	limit := 100000000.00
+	if len(maxAmount) > 0 && maxAmount[0] > 0 {
+		limit = maxAmount[0]
+	}
+	return &ExpenseHandler{store: store, maxAmount: limit}
 }
 
 // Create insert new expense record into SQLite database and return the created object.
@@ -39,13 +45,17 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "amount must be a positive number greater than 0")
 		return
 	}
+	if req.Amount > h.maxAmount {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("amount cannot exceed maximum limit of %.2f", h.maxAmount))
+		return
+	}
 	// Prevent more than 2 decimal places after point
 	if scaled := req.Amount * 100; math.Abs(scaled-math.Round(scaled)) > 1e-9 {
 		respondError(w, http.StatusBadRequest, "amount cannot have more than 2 decimal places")
 		return
 	}
 
-	req.Category = strings.TrimSpace(req.Category)
+	req.Category = sanitize.Category(req.Category)
 	if req.Category == "" {
 		respondError(w, http.StatusBadRequest, "category is required and cannot be empty")
 		return
@@ -62,7 +72,7 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Note = strings.TrimSpace(req.Note)
+	req.Note = sanitize.String(req.Note)
 
 	expense, err := h.store.Create(r.Context(), req)
 	if err != nil {
@@ -100,6 +110,10 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "amount must be a positive number greater than 0")
 			return
 		}
+		if *req.Amount > h.maxAmount {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("amount cannot exceed maximum limit of %.2f", h.maxAmount))
+			return
+		}
 		// Prevent more than 2 decimal places after point
 		if scaled := *req.Amount * 100; math.Abs(scaled-math.Round(scaled)) > 1e-9 {
 			respondError(w, http.StatusBadRequest, "amount cannot have more than 2 decimal places")
@@ -108,7 +122,7 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Category != nil {
-		*req.Category = strings.TrimSpace(*req.Category)
+		*req.Category = sanitize.Category(*req.Category)
 		if *req.Category == "" {
 			respondError(w, http.StatusBadRequest, "category cannot be empty")
 			return
@@ -124,7 +138,7 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Note != nil {
-		*req.Note = strings.TrimSpace(*req.Note)
+		*req.Note = sanitize.String(*req.Note)
 	}
 
 	expense, err := h.store.UpdateExpense(r.Context(), req, id)

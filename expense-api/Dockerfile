@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 
 # Pure Go binary (don't need CGO)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o expense-api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o expense-api ./api
 
 # Runtime stage
 FROM alpine:3.19
@@ -22,6 +22,8 @@ COPY --from=builder /app/expense-api .
 
 ENV PORT=8080
 ENV DB_PATH=/app/data/expenses.db
+ENV LOG_PATH=/app/data/app.log
+ENV MAX_EXPENSE_AMOUNT=100000000.00
 
 EXPOSE 8080
 

@@ -36,6 +36,8 @@ type CategorySummary struct {
 }
 
 type ExpenseSummary struct {
-	TotalAmount float64           `json:"total_amount"`
-	Categories  []CategorySummary `json:"categories"`
+	TotalAmount     float64           `json:"total_amount"`
+	TotalExpenses   int64             `json:"total_expenses"`
+	TotalCategories int               `json:"total_categories"`
+	Categories      []CategorySummary `json:"categories"`
 }

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api:
     build:
@@ -11,7 +9,10 @@ services:
     environment:
       - PORT=8080
       - DB_PATH=/app/data/expenses.db
+      - LOG_PATH=/app/data/app.log
+      - MAX_EXPENSE_AMOUNT=100000000.00
     volumes:
-      # Baza faylı lokal olaraq base qovluqdakı data/ içinə yazılacaq
+      # Baza və log faylları lokal data/ qovluğuna yazılacaq
       - ./data:/app/data
     restart: unless-stopped
+

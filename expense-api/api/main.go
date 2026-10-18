@@ -3,40 +3,40 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"expense-api/internal/config"
 	"expense-api/internal/handler"
+	"expense-api/internal/logger"
 	"expense-api/internal/storage"
 )
 
 func main() {
-	port := os.Getenv("PORT") //TODO: make env process modular and dynamic
-	if port == "" {
-		port = "8080"
-	}
+	cfg := config.Load()
 
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "./data/expenses.db"
+	// Logger service
+	appLogger, err := logger.New(cfg.LogPath)
+	if err != nil {
+		log.Fatalf("Logger error: %s", err)
 	}
+	defer appLogger.Close()
 
 	// initialize DB
-	store, err := storage.NewSQLite(dbPath)
+	store, err := storage.NewSQLite(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("DB error: %s", err)
 	}
 	defer store.Close()
 
 	// Handler
-	expenseHandler := handler.NewExpenseHandler(store)
+	expenseHandler := handler.NewExpenseHandler(store, cfg.MaxAmount)
 
 	r := chi.NewRouter()
 
-	// Chi-nin hazır middleware-ləri
-	r.Use(middleware.Logger)
+	// Middleware
+	r.Use(appLogger.Middleware)
 	r.Use(middleware.Recoverer)
 
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -53,8 +53,8 @@ func main() {
 	r.Patch("/expenses/{id:[0-9]+}", expenseHandler.Update)
 	r.Delete("/expenses/{id:[0-9]+}", expenseHandler.DeleteExpense)
 
-	log.Printf("Server running at %s port ...  ", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
+	log.Printf("Server running at %s port ...  ", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
 		log.Fatalf("Server error: %s", err)
 	}
 }

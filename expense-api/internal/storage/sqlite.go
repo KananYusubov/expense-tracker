@@ -194,39 +194,56 @@ func (s *Storage) DeleteExpense(ctx context.Context, id int64) error {
 	return nil
 }
 
-// GetAllExpensesSummary returns total spent grouped by category.
-// TODO: add metadata for total category count expense count and total spent amount
-func (s *Storage) GetAllExpensesSummary(ctx context.Context) ([]model.CategorySummary, error) {
-	query := `
-	SELECT category, SUM(amount) as total_amount
+// GetAllExpensesSummary returns overall totals, counts, and category breakdown.
+func (s *Storage) GetAllExpensesSummary(ctx context.Context) (*model.ExpenseSummary, error) {
+	// 1. Overall metadata: total spent amount and total expense count
+	metaQuery := `
+	SELECT COALESCE(ROUND(SUM(amount), 2), 0), COUNT(*)
+	FROM expenses
+	WHERE deleted_at IS NULL
+	`
+	var totalAmount float64
+	var totalExpenses int64
+	if err := s.db.QueryRowContext(ctx, metaQuery).Scan(&totalAmount, &totalExpenses); err != nil {
+		return nil, fmt.Errorf("failed to query expenses metadata: %w", err)
+	}
+
+	// 2. Category breakdown
+	catQuery := `
+	SELECT category, ROUND(SUM(amount), 2) as total_amount
 	FROM expenses
 	WHERE deleted_at IS NULL
 	GROUP BY category
 	ORDER BY total_amount DESC
 	`
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, catQuery)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query expenses summary: %w", err)
+		return nil, fmt.Errorf("failed to query expenses category summary: %w", err)
 	}
 	defer rows.Close()
 
-	summary := make([]model.CategorySummary, 0)
+	categories := make([]model.CategorySummary, 0)
 	for rows.Next() {
 		var cs model.CategorySummary
 		if err := rows.Scan(
 			&cs.Category,
 			&cs.Total,
 		); err != nil {
-			return nil, fmt.Errorf("failed to scan expense summary row: %w", err)
+			return nil, fmt.Errorf("failed to scan expense category summary row: %w", err)
 		}
-		summary = append(summary, cs)
+		categories = append(categories, cs)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating expense summary rows: %w", err)
+		return nil, fmt.Errorf("error iterating expense category summary rows: %w", err)
 	}
 
-	return summary, nil
+	return &model.ExpenseSummary{
+		TotalAmount:     totalAmount,
+		TotalExpenses:   totalExpenses,
+		TotalCategories: len(categories),
+		Categories:      categories,
+	}, nil
 }
 
 func (s *Storage) UpdateExpense(ctx context.Context, req model.UpdateExpenseRequest, id int64) (*model.Expense, error) {
