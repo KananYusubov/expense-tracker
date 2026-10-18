@@ -45,8 +45,10 @@ func main() {
 		w.Write([]byte(`{"message": "pong"}`))
 	})
 
-	// create expense record endpoint
+	// Expense endpoints
 	r.Post("/expenses", expenseHandler.Create)
+	r.Get("/expenses", expenseHandler.GetAllExpenses)
+	r.Get("/expenses/{id}", expenseHandler.GetExpense)
 
 	log.Printf("Server running at %s port ...  ", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {

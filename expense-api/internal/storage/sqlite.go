@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 
 	"expense-api/internal/model"
 )
+
+var ErrNotFound = errors.New("expense not found")
 
 type Storage struct {
 	db *sql.DB
@@ -57,7 +60,7 @@ func (s *Storage) migrate() error {
 		note TEXT,
 		spent_on TEXT NOT NULL,
 		created_at DATETIME NOT NULL,
-		updated_at DATETIME
+		updated_at DATETIME,
 		deleted_at DATETIME
 	);
 	`
@@ -96,4 +99,71 @@ func (s *Storage) Create(ctx context.Context, req model.CreateExpenseRequest) (*
 		SpentOn:   req.SpentOn,
 		CreatedAt: now,
 	}, nil
+}
+
+// GetAllExpenses returns all active (non-deleted) expenses ordered by created_at desc (newest first).
+func (s *Storage) GetAllExpenses(ctx context.Context) ([]model.Expense, error) {
+	query := `
+	SELECT id, amount, category, COALESCE(note, ''), spent_on, created_at, updated_at
+	FROM expenses
+	WHERE deleted_at IS NULL
+	ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query expenses: %w", err)
+	}
+	defer rows.Close()
+
+	expenses := make([]model.Expense, 0)
+	for rows.Next() {
+		var exp model.Expense
+		if err := rows.Scan(
+			&exp.ID,
+			&exp.Amount,
+			&exp.Category,
+			&exp.Note,
+			&exp.SpentOn,
+			&exp.CreatedAt,
+			&exp.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan expense row: %w", err)
+		}
+		expenses = append(expenses, exp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating expense rows: %w", err)
+	}
+
+	return expenses, nil
+}
+
+// GetExpense retrieves a single active (non-deleted) expense by its ID.
+func (s *Storage) GetExpense(ctx context.Context, id int64) (*model.Expense, error) {
+	query := `
+	SELECT id, amount, category, COALESCE(note, ''), spent_on, created_at, updated_at
+	FROM expenses
+	WHERE id = ? AND deleted_at IS NULL
+	`
+
+	var exp model.Expense
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&exp.ID,
+		&exp.Amount,
+		&exp.Category,
+		&exp.Note,
+		&exp.SpentOn,
+		&exp.CreatedAt,
+		&exp.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to get expense: %w", err)
+	}
+
+	return &exp, nil
 }

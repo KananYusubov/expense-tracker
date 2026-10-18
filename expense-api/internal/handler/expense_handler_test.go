@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,8 @@ import (
 	"expense-api/internal/handler"
 	"expense-api/internal/model"
 	"expense-api/internal/storage"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func setupTestStorage(t *testing.T) (*storage.Storage, func()) {
@@ -106,5 +109,131 @@ func TestExpenseHandler_Create_InvalidAmount(t *testing.T) {
 				t.Fatalf("expected 400 Bad Request for %s, got %d", tc.name, w.Code)
 			}
 		})
+	}
+}
+
+func TestExpenseHandler_GetAllExpenses(t *testing.T) {
+	store, teardown := setupTestStorage(t)
+	defer teardown()
+
+	h := handler.NewExpenseHandler(store)
+
+	// 1. Initial empty list returns empty JSON array []
+	req := httptest.NewRequest(http.MethodGet, "/expenses", nil)
+	w := httptest.NewRecorder()
+	h.GetAllExpenses(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var expenses []model.Expense
+	if err := json.NewDecoder(w.Body).Decode(&expenses); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(expenses) != 0 {
+		t.Fatalf("expected 0 expenses, got %d", len(expenses))
+	}
+
+	// 2. Insert two expenses
+	_, err := store.Create(req.Context(), model.CreateExpenseRequest{
+		Amount:   15.50,
+		Category: "transport",
+		SpentOn:  "2026-05-01",
+	})
+	if err != nil {
+		t.Fatalf("failed to seed expense: %v", err)
+	}
+
+	_, err = store.Create(req.Context(), model.CreateExpenseRequest{
+		Amount:   45.00,
+		Category: "groceries",
+		SpentOn:  "2026-05-02",
+	})
+	if err != nil {
+		t.Fatalf("failed to seed expense: %v", err)
+	}
+
+	// 3. Fetch all expenses
+	w = httptest.NewRecorder()
+	h.GetAllExpenses(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if err := json.NewDecoder(w.Body).Decode(&expenses); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(expenses) != 2 {
+		t.Fatalf("expected 2 expenses, got %d", len(expenses))
+	}
+
+	// Newest first check
+	if expenses[0].Category != "groceries" {
+		t.Errorf("expected first expense to be 'groceries' (newest), got '%s'", expenses[0].Category)
+	}
+}
+
+func TestExpenseHandler_GetExpense(t *testing.T) {
+	store, teardown := setupTestStorage(t)
+	defer teardown()
+
+	h := handler.NewExpenseHandler(store)
+	r := chi.NewRouter()
+	r.Get("/expenses/{id}", h.GetExpense)
+
+	// 1. Create a sample expense
+	created, err := store.Create(context.Background(), model.CreateExpenseRequest{
+		Amount:   50.25,
+		Category: "entertainment",
+		Note:     "Cinema ticket",
+		SpentOn:  "2026-05-10",
+	})
+	if err != nil {
+		t.Fatalf("failed to create test expense: %v", err)
+	}
+
+	// 2. Fetch existing expense by ID
+	req := httptest.NewRequest(http.MethodGet, "/expenses/1", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var fetched model.Expense
+	if err := json.NewDecoder(w.Body).Decode(&fetched); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if fetched.ID != created.ID {
+		t.Errorf("expected ID %d, got %d", created.ID, fetched.ID)
+	}
+	if fetched.Amount != 50.25 {
+		t.Errorf("expected amount 50.25, got %f", fetched.Amount)
+	}
+	if fetched.Note != "Cinema ticket" {
+		t.Errorf("expected note 'Cinema ticket', got '%s'", fetched.Note)
+	}
+
+	// 3. Fetch non-existing expense (404)
+	req404 := httptest.NewRequest(http.MethodGet, "/expenses/9999", nil)
+	w404 := httptest.NewRecorder()
+	r.ServeHTTP(w404, req404)
+
+	if w404.Code != http.StatusNotFound {
+		t.Errorf("expected 404 Not Found for non-existing id, got %d", w404.Code)
+	}
+
+	// 4. Invalid ID parameter (400)
+	req400 := httptest.NewRequest(http.MethodGet, "/expenses/abc", nil)
+	w400 := httptest.NewRecorder()
+	r.ServeHTTP(w400, req400)
+
+	if w400.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for invalid id, got %d", w400.Code)
 	}
 }

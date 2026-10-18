@@ -2,10 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"expense-api/internal/model"
 	"expense-api/internal/storage"
@@ -66,6 +70,39 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, expense)
+}
+
+// GetAllExpenses fetches all expenses and returns them sorted newest first.
+func (h *ExpenseHandler) GetAllExpenses(w http.ResponseWriter, r *http.Request) {
+	expenses, err := h.store.GetAllExpenses(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to fetch expenses: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, expenses)
+}
+
+// GetExpense fetches a single expense by ID.
+func (h *ExpenseHandler) GetExpense(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id <= 0 {
+		respondError(w, http.StatusBadRequest, "invalid expense id")
+		return
+	}
+
+	expense, err := h.store.GetExpense(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "expense not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "failed to get expense: "+err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, expense)
 }
 
 // return response data as JSON format
