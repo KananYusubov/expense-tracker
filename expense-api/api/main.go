@@ -7,13 +7,31 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"expense-api/internal/handler"
+	"expense-api/internal/storage"
 )
 
 func main() {
-	port := os.Getenv("PORT")
+	port := os.Getenv("PORT") //TODO: make env process modular and dynamic
 	if port == "" {
 		port = "8080"
 	}
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "./data/expenses.db"
+	}
+
+	// initialize DB
+	store, err := storage.NewSQLite(dbPath)
+	if err != nil {
+		log.Fatalf("DB error: %s", err)
+	}
+	defer store.Close()
+
+	// Handler
+	expenseHandler := handler.NewExpenseHandler(store)
 
 	r := chi.NewRouter()
 
@@ -27,8 +45,11 @@ func main() {
 		w.Write([]byte(`{"message": "pong"}`))
 	})
 
-	log.Printf("Server %s portunda işə düşdü...", port)
+	// create expense record endpoint
+	r.Post("/expenses", expenseHandler.Create)
+
+	log.Printf("Server running at %s port ...  ", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("Server xətası: %s", err)
+		log.Fatalf("Server error: %s", err)
 	}
 }

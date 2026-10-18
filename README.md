@@ -18,8 +18,10 @@ API binds to `http://localhost:8080` and stores SQLite data in `./data`.
 
 ```
 cd api
+go run ./api/
+
+For testing:
 go test -v ./...
-go run ./cmd/api
 ```
 
 *Note: For Windows local development convenience, an `open-terminal.bat` script is included to automatically launch split terminal tabs for the Go runtime and Docker workflows.*
